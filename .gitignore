@@ -1,0 +1,29 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+build
+*.tsbuildinfo
+
+# Environment files — keep .env.example and .env.production tracked
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# OS / editor
+.DS_Store
+.vscode
+.idea
+
+# Test output
+coverage
+
+# Generated / tool output (not part of the app)
+graphify-out/
+.graphify_detect.json
+.codex/
