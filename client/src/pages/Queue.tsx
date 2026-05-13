@@ -423,7 +423,7 @@ export default function Queue() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      title="Push this contact to a GHL workflow"
+                      title="Push this contact to a Launchpad workflow"
                       onClick={() => openWorkflowPicker([d.id])}
                       disabled={working}
                     >
@@ -513,7 +513,7 @@ export default function Queue() {
             <DialogDescription>
               {activeRule ? (
                 <>
-                  This will run rule <strong>{activeRule.name}</strong> against the connected GHL sub-account
+                  This will run rule <strong>{activeRule.name}</strong> against the connected Launchpad sub-account
                   and add any qualifying dormant contacts as drafts in <em>this</em> queue.
                   Existing drafts for the same contacts within the last 30 days are skipped.
                 </>
@@ -537,7 +537,7 @@ export default function Queue() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Push {wfTargetIds.length} contact{wfTargetIds.length === 1 ? '' : 's'} to a GHL workflow
+              Push {wfTargetIds.length} contact{wfTargetIds.length === 1 ? '' : 's'} to a Launchpad workflow
             </DialogTitle>
             <DialogDescription>
               Pick a workflow from this sub-account. Each contact will be added immediately. This is independent from approving the draft message.

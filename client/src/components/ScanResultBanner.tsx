@@ -72,8 +72,8 @@ export function ScanResultBanner({
           <div>
             <div className="font-semibold">No contacts found</div>
             <div className="text-sm">
-              GHL returned no contacts for this sub-account.
-              {errors.length > 0 ? ` First error: ${errors[0]}` : ' Check that the rule is active and the GHL token has the contacts scope.'}
+              Launchpad returned no contacts for this sub-account.
+              {errors.length > 0 ? ` First error: ${errors[0]}` : ' Check that the rule is active and the Launchpad token has the contacts scope.'}
             </div>
           </div>
           <Button asChild size="sm" variant="outline">

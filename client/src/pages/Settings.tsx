@@ -70,7 +70,7 @@ export default function Settings() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Settings</h1>
-        <p className="text-sm text-muted-foreground">Connect GHL, configure brand voice, and optionally add an OpenAI key.</p>
+        <p className="text-sm text-muted-foreground">Connect Launchpad, configure brand voice, and optionally add an OpenAI key.</p>
       </div>
 
       <Card>
@@ -117,7 +117,7 @@ export default function Settings() {
       <Card>
         <CardHeader>
           <CardTitle>Add / update sub-account</CardTitle>
-          <CardDescription>GHL Location ID + API key. Keys are encrypted at rest.</CardDescription>
+          <CardDescription>Launchpad Location ID + API key. Keys are encrypted at rest.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-3 md:grid-cols-2">
@@ -130,11 +130,11 @@ export default function Settings() {
               <Input value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
             </div>
             <div>
-              <Label>GHL Location ID</Label>
+              <Label>Launchpad Location ID</Label>
               <Input value={form.ghl_location_id} onChange={(e) => setForm({ ...form, ghl_location_id: e.target.value })} />
             </div>
             <div>
-              <Label>GHL API key</Label>
+              <Label>Launchpad API key</Label>
               <Input
                 type="password"
                 value={form.ghl_api_key}
