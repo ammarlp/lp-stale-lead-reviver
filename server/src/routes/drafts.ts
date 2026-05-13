@@ -8,13 +8,16 @@ export const draftsRouter = Router();
 
 draftsRouter.get('/', async (req, res) => {
   const status = (req.query.status as string) || 'pending';
-  const subId = req.query.sub_account_id as string | undefined;
   const ruleId = req.query.rule_id as string | undefined;
   const channel = req.query.channel as string | undefined;
 
-  let q = sb().from('drafts').select('*').order('created_at', { ascending: false }).limit(500);
+  let q = sb()
+    .from('drafts')
+    .select('*')
+    .eq('sub_account_id', req.subAccountId!)
+    .order('created_at', { ascending: false })
+    .limit(500);
   if (status && status !== 'all') q = q.eq('status', status);
-  if (subId) q = q.eq('sub_account_id', subId);
   if (ruleId) q = q.eq('rule_id', ruleId);
   if (channel) q = q.eq('channel', channel);
 
@@ -24,7 +27,12 @@ draftsRouter.get('/', async (req, res) => {
 });
 
 draftsRouter.get('/:id', async (req, res) => {
-  const { data, error } = await sb().from('drafts').select('*').eq('id', req.params.id).single();
+  const { data, error } = await sb()
+    .from('drafts')
+    .select('*')
+    .eq('id', req.params.id)
+    .eq('sub_account_id', req.subAccountId!)
+    .single();
   if (error || !data) return res.status(404).json({ error: 'not found' });
   const { data: events } = await sb()
     .from('revive_events')
@@ -43,8 +51,15 @@ draftsRouter.patch('/:id', async (req, res) => {
     })
     .parse(req.body);
 
-  const { data, error } = await sb().from('drafts').update(body).eq('id', req.params.id).select().single();
+  const { data, error } = await sb()
+    .from('drafts')
+    .update(body)
+    .eq('id', req.params.id)
+    .eq('sub_account_id', req.subAccountId!)
+    .select()
+    .single();
   if (error) return res.status(500).json({ error: error.message });
+  if (!data) return res.status(404).json({ error: 'not found' });
   res.json({ draft: data });
 });
 
@@ -53,15 +68,22 @@ draftsRouter.post('/:id/reject', async (req, res) => {
     .from('drafts')
     .update({ status: 'rejected' })
     .eq('id', req.params.id)
+    .eq('sub_account_id', req.subAccountId!)
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });
+  if (!data) return res.status(404).json({ error: 'not found' });
   await sb().from('revive_events').insert({ draft_id: data.id, event_type: 'rejected', metadata: {} });
   res.json({ draft: data });
 });
 
 draftsRouter.post('/:id/regenerate', async (req, res) => {
-  const { data: draft, error } = await sb().from('drafts').select('*').eq('id', req.params.id).single();
+  const { data: draft, error } = await sb()
+    .from('drafts')
+    .select('*')
+    .eq('id', req.params.id)
+    .eq('sub_account_id', req.subAccountId!)
+    .single();
   if (error || !draft) return res.status(404).json({ error: 'not found' });
   const sub = await getSubAccount(draft.sub_account_id);
   if (!sub) return res.status(404).json({ error: 'sub_account not found' });
@@ -90,7 +112,12 @@ draftsRouter.post('/:id/regenerate', async (req, res) => {
 });
 
 draftsRouter.post('/:id/approve', async (req, res) => {
-  const { data: draft, error } = await sb().from('drafts').select('*').eq('id', req.params.id).single();
+  const { data: draft, error } = await sb()
+    .from('drafts')
+    .select('*')
+    .eq('id', req.params.id)
+    .eq('sub_account_id', req.subAccountId!)
+    .single();
   if (error || !draft) return res.status(404).json({ error: 'not found' });
   if (draft.status === 'sent') return res.status(400).json({ error: 'already sent' });
 
@@ -112,7 +139,6 @@ draftsRouter.post('/:id/approve', async (req, res) => {
     }
     const sendRes = await ghl.sendMessage(messageBody);
 
-    // auto-tag contact
     if (draft.rule_id) {
       try {
         await ghl.addTag(draft.ghl_contact_id, [`revive-sent-${draft.rule_id}`]);
@@ -143,7 +169,12 @@ draftsRouter.post('/:id/approve', async (req, res) => {
 
 draftsRouter.post('/:id/push-to-workflow', async (req, res) => {
   const body = z.object({ workflow_id: z.string().min(1) }).parse(req.body);
-  const { data: draft, error } = await sb().from('drafts').select('*').eq('id', req.params.id).single();
+  const { data: draft, error } = await sb()
+    .from('drafts')
+    .select('*')
+    .eq('id', req.params.id)
+    .eq('sub_account_id', req.subAccountId!)
+    .single();
   if (error || !draft) return res.status(404).json({ error: 'not found' });
   const sub = await getSubAccount(draft.sub_account_id);
   if (!sub) return res.status(400).json({ error: 'sub_account not found' });
@@ -166,8 +197,12 @@ draftsRouter.post('/bulk-approve', async (req, res) => {
   const results: any[] = [];
   for (const id of body.ids) {
     try {
-      // Re-use approve logic via internal call
-      const { data: draft } = await sb().from('drafts').select('*').eq('id', id).single();
+      const { data: draft } = await sb()
+        .from('drafts')
+        .select('*')
+        .eq('id', id)
+        .eq('sub_account_id', req.subAccountId!)
+        .single();
       if (!draft || draft.status === 'sent') {
         results.push({ id, ok: false, error: 'invalid state' });
         continue;

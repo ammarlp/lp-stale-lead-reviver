@@ -4,6 +4,7 @@ import fs from 'fs';
 import express from 'express';
 import cors from 'cors';
 import cron from 'node-cron';
+import { z } from 'zod';
 import { draftsRouter } from './routes/drafts';
 import { rulesRouter } from './routes/rules';
 import { settingsRouter } from './routes/settings';
@@ -12,6 +13,8 @@ import { cronRouter } from './routes/cron';
 import { dashboardRouter } from './routes/dashboard';
 import { runScan } from './cron/scan';
 import { hasAIKey } from './services/ai';
+import { requireAuth, attachSubAccount, requireSubAccount } from './middleware/auth';
+import { createSubAccountForUser, getSubAccountByUser } from './services/supabase';
 
 const BASE_PATH = '/lead-reviver';
 
@@ -19,16 +22,42 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
+// Public — no auth required
 app.get(`${BASE_PATH}/api/health`, (_req, res) => {
   res.json({ ok: true, ai: hasAIKey() ? 'connected' : 'template-fallback', ts: Date.now() });
 });
+app.use(`${BASE_PATH}/api/webhook`, webhooksRouter); // guarded by webhook secret
 
-app.use(`${BASE_PATH}/api/drafts`, draftsRouter);
-app.use(`${BASE_PATH}/api/rules`, rulesRouter);
-app.use(`${BASE_PATH}/api/settings`, settingsRouter);
-app.use(`${BASE_PATH}/api/webhook`, webhooksRouter);
-app.use(`${BASE_PATH}/api/cron`, cronRouter);
-app.use(`${BASE_PATH}/api/dashboard`, dashboardRouter);
+// Onboarding: authenticated, but does not require a sub_account to exist yet
+const onboardingSchema = z.object({
+  name: z.string().min(1),
+  ghl_location_id: z.string().min(1),
+  ghl_api_key: z.string().min(1),
+  brand_voice: z.string().nullable().optional(),
+  timezone: z.string().default('UTC'),
+  recovery_stage_id: z.string().nullable().optional(),
+});
+app.post(`${BASE_PATH}/api/onboarding`, requireAuth, async (req, res) => {
+  try {
+    const existing = await getSubAccountByUser(req.userId!);
+    if (existing) return res.status(409).json({ error: 'already onboarded' });
+    const body = onboardingSchema.parse(req.body);
+    const sub = await createSubAccountForUser(req.userId!, body);
+    res.json({ sub_account: { ...sub, ghl_api_key: '***' + sub.ghl_api_key.slice(-4) } });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// Authenticated routes that require a completed onboarding
+const protectedFull = [requireAuth, attachSubAccount, requireSubAccount];
+app.use(`${BASE_PATH}/api/drafts`, protectedFull, draftsRouter);
+app.use(`${BASE_PATH}/api/rules`, protectedFull, rulesRouter);
+app.use(`${BASE_PATH}/api/cron`, protectedFull, cronRouter);
+app.use(`${BASE_PATH}/api/dashboard`, protectedFull, dashboardRouter);
+
+// Settings is authenticated but onboarding-optional (Settings endpoints handle the no-subaccount case).
+app.use(`${BASE_PATH}/api/settings`, requireAuth, settingsRouter);
 
 // Resolves to <repo>/client/dist whether running from src (tsx) or dist (node).
 const clientDist = path.resolve(__dirname, '..', '..', 'client', 'dist');

@@ -48,3 +48,67 @@ export async function upsertSubAccount(input: {
   if (error) throw error;
   return { ...data, ghl_api_key: decrypt(data.ghl_api_key) };
 }
+
+export async function getSubAccountIdByUser(userId: string): Promise<string | null> {
+  const { data, error } = await sb()
+    .from('sub_accounts')
+    .select('id')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.id ?? null;
+}
+
+export async function getSubAccountByUser(userId: string): Promise<SubAccount | null> {
+  const { data, error } = await sb()
+    .from('sub_accounts')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return { ...data, ghl_api_key: decrypt(data.ghl_api_key) };
+}
+
+export async function createSubAccountForUser(
+  userId: string,
+  input: {
+    name: string;
+    ghl_location_id: string;
+    ghl_api_key: string;
+    brand_voice?: string | null;
+    timezone?: string;
+    recovery_stage_id?: string | null;
+  }
+): Promise<SubAccount> {
+  const row = {
+    ...input,
+    user_id: userId,
+    ghl_api_key: encrypt(input.ghl_api_key),
+  };
+  const { data, error } = await sb().from('sub_accounts').insert(row).select().single();
+  if (error) throw error;
+  return { ...data, ghl_api_key: decrypt(data.ghl_api_key) };
+}
+
+export async function updateSubAccountForUser(
+  userId: string,
+  input: {
+    name?: string;
+    ghl_location_id?: string;
+    ghl_api_key?: string;
+    brand_voice?: string | null;
+    timezone?: string;
+    recovery_stage_id?: string | null;
+  }
+): Promise<SubAccount> {
+  const row: any = { ...input };
+  if (input.ghl_api_key) row.ghl_api_key = encrypt(input.ghl_api_key);
+  const { data, error } = await sb()
+    .from('sub_accounts')
+    .update(row)
+    .eq('user_id', userId)
+    .select()
+    .single();
+  if (error) throw error;
+  return { ...data, ghl_api_key: decrypt(data.ghl_api_key) };
+}

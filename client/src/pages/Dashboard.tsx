@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -24,29 +24,24 @@ export default function Dashboard() {
   const [series, setSeries] = useState<any[]>([]);
   const [rules, setRules] = useState<any[]>([]);
   const [perf, setPerf] = useState<any[]>([]);
-  const [subs, setSubs] = useState<any[]>([]);
-  const [subFilter, setSubFilter] = useState<string>(ALL);
   const [ruleFilter, setRuleFilter] = useState<string>(ALL);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResultPayload | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
-  const [scanSubChoice, setScanSubChoice] = useState<string>(ALL);
   const [scanRuleChoice, setScanRuleChoice] = useState<string>(ALL);
 
-  const subId = subFilter === ALL ? undefined : subFilter;
   const ruleId = ruleFilter === ALL ? undefined : ruleFilter;
 
   async function loadAux() {
-    const [{ rules }, { sub_accounts }] = await Promise.all([api.listRules(), api.listSubAccounts()]);
+    const { rules } = await api.listRules();
     setRules(rules);
-    setSubs(sub_accounts);
   }
 
   async function loadStats() {
     const [k, ts, rp] = await Promise.all([
-      api.kpis(subId, ruleId),
-      api.timeseries(subId, ruleId, 90),
-      api.rulePerformance(subId),
+      api.kpis(ruleId),
+      api.timeseries(ruleId, 90),
+      api.rulePerformance(),
     ]);
     setKpis(k);
     setSeries(ts.series);
@@ -59,22 +54,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadStats().catch(console.error);
-  }, [subFilter, ruleFilter]);
-
-  // Keep rule filter valid when sub-account filter changes.
-  const visibleRules = useMemo(
-    () => (subId ? rules.filter((r) => r.sub_account_id === subId) : rules),
-    [rules, subId]
-  );
-  useEffect(() => {
-    if (ruleFilter !== ALL && !visibleRules.some((r) => r.id === ruleFilter)) {
-      setRuleFilter(ALL);
-    }
-  }, [subFilter, visibleRules, ruleFilter]);
+  }, [ruleFilter]);
 
   function openScanDialog() {
-    // Default to whatever's already filtered on the page (if anything)
-    setScanSubChoice(subFilter);
     setScanRuleChoice(ruleFilter);
     setScanOpen(true);
   }
@@ -84,7 +66,6 @@ export default function Dashboard() {
     setScanResult(null);
     try {
       const r: any = await api.runScan({
-        sub_account_id: scanSubChoice === ALL ? undefined : scanSubChoice,
         rule_id: scanRuleChoice === ALL ? undefined : scanRuleChoice,
       });
       const totals = r.results.reduce(
@@ -114,18 +95,7 @@ export default function Dashboard() {
     }
   }
 
-  // Rules visible in the scan dialog narrow to the chosen sub-account.
-  const scanVisibleRules = useMemo(
-    () => (scanSubChoice === ALL ? rules : rules.filter((r) => r.sub_account_id === scanSubChoice)),
-    [rules, scanSubChoice]
-  );
-
-  const scopeLabel = (() => {
-    const parts: string[] = [];
-    if (subId) parts.push(subs.find((s) => s.id === subId)?.name || 'sub-account');
-    if (ruleId) parts.push(rules.find((r) => r.id === ruleId)?.name || 'rule');
-    return parts.length ? parts.join(' · ') : 'All sub-accounts · All rules';
-  })();
+  const scopeLabel = ruleId ? rules.find((r) => r.id === ruleId)?.name || 'rule' : 'All rules';
 
   return (
     <div className="space-y-6">
@@ -143,22 +113,12 @@ export default function Dashboard() {
       <Card>
         <CardContent className="flex flex-wrap gap-4 pt-6">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Sub-account</span>
-            <Select value={subFilter} onValueChange={setSubFilter}>
-              <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All sub-accounts</SelectItem>
-                {subs.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">Rule</span>
             <Select value={ruleFilter} onValueChange={setRuleFilter}>
               <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>All rules</SelectItem>
-                {visibleRules.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+                {rules.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -225,28 +185,18 @@ export default function Dashboard() {
           <DialogHeader>
             <DialogTitle>Run scan</DialogTitle>
             <DialogDescription>
-              Pick which sub-account and rule to scan. "All" means every active rule. New drafts land in that rule's queue. Contacts already drafted in the last 30 days are skipped.
+              Pick which rule to scan. "All" means every active rule. New drafts land in that rule's queue. Contacts already drafted in the last 30 days are skipped.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
-            <div>
-              <Label>Sub-account</Label>
-              <Select value={scanSubChoice} onValueChange={setScanSubChoice}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All sub-accounts</SelectItem>
-                  {subs.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
             <div>
               <Label>Rule</Label>
               <Select value={scanRuleChoice} onValueChange={setScanRuleChoice}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL}>All rules</SelectItem>
-                  {scanVisibleRules.map((r) => (
+                  {rules.map((r) => (
                     <SelectItem key={r.id} value={r.id}>
                       {r.name}{!r.is_active ? ' (inactive)' : ''}
                     </SelectItem>

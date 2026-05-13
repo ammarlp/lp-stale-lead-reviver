@@ -1,21 +1,45 @@
+import { supabase } from './supabase';
+
 const BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000/api';
 
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function call<T = any>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(BASE + path, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-    },
-  });
+  const { data: { session } } = await supabase.auth.getSession();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(init?.headers as Record<string, string> | undefined),
+  };
+  if (session?.access_token) {
+    headers['Authorization'] = `Bearer ${session.access_token}`;
+  }
+
+  const res = await fetch(BASE + path, { ...init, headers });
+
+  if (res.status === 401) {
+    await supabase.auth.signOut();
+    // Let the auth-aware router redirect to /login on next render.
+    throw new ApiError('Session expired — please sign in again.', 401);
+  }
+
   const text = await res.text();
   const body = text ? JSON.parse(text) : {};
-  if (!res.ok) throw new Error(body?.error || `HTTP ${res.status}`);
+  if (!res.ok) throw new ApiError(body?.error || `HTTP ${res.status}`, res.status);
   return body as T;
 }
 
 export const api = {
   health: () => call('/health'),
+
+  // onboarding
+  onboard: (body: any) =>
+    call('/onboarding', { method: 'POST', body: JSON.stringify(body) }),
 
   // drafts
   listDrafts: (params: Record<string, string | undefined> = {}) => {
@@ -33,15 +57,14 @@ export const api = {
     call('/drafts/bulk-approve', { method: 'POST', body: JSON.stringify({ ids }) }),
 
   // rules
-  listRules: (subId?: string) =>
-    call<{ rules: any[] }>(`/rules${subId ? `?sub_account_id=${subId}` : ''}`),
+  listRules: () => call<{ rules: any[] }>('/rules'),
   createRule: (body: any) => call('/rules', { method: 'POST', body: JSON.stringify(body) }),
   updateRule: (id: string, body: any) =>
     call(`/rules/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteRule: (id: string) => call(`/rules/${id}`, { method: 'DELETE' }),
 
   // settings
-  listSubAccounts: () => call<{ sub_accounts: any[] }>('/settings/sub-accounts'),
+  getSubAccount: () => call<{ sub_account: any | null }>('/settings/sub-account'),
   saveSubAccount: (body: any) =>
     call('/settings/sub-account', { method: 'POST', body: JSON.stringify(body) }),
   aiStatus: () =>
@@ -50,32 +73,26 @@ export const api = {
     '/settings/ai-test',
     { method: 'POST' }
   ),
-  ghlPipelines: (subId: string) =>
-    call<{ pipelines: any[] }>(`/settings/ghl/pipelines?sub_account_id=${subId}`),
-  ghlWorkflows: (subId: string) =>
-    call<{ workflows: any[] }>(`/settings/ghl/workflows?sub_account_id=${subId}`),
+  ghlPipelines: () => call<{ pipelines: any[] }>('/settings/ghl/pipelines'),
+  ghlWorkflows: () => call<{ workflows: any[] }>('/settings/ghl/workflows'),
   pushDraftToWorkflow: (id: string, workflow_id: string) =>
     call(`/drafts/${id}/push-to-workflow`, { method: 'POST', body: JSON.stringify({ workflow_id }) }),
 
   // cron
-  runScan: (body?: { sub_account_id?: string; rule_id?: string }) =>
+  runScan: (body?: { rule_id?: string }) =>
     call('/cron/scan', { method: 'POST', body: JSON.stringify(body || {}) }),
 
   // dashboard
-  kpis: (subId?: string, ruleId?: string) => {
+  kpis: (ruleId?: string) => {
     const q = new URLSearchParams();
-    if (subId) q.set('sub_account_id', subId);
     if (ruleId) q.set('rule_id', ruleId);
     return call<any>(`/dashboard/kpis?${q.toString()}`);
   },
-  timeseries: (subId?: string, ruleId?: string, days = 90) => {
+  timeseries: (ruleId?: string, days = 90) => {
     const q = new URLSearchParams({ days: String(days) });
-    if (subId) q.set('sub_account_id', subId);
     if (ruleId) q.set('rule_id', ruleId);
     return call<{ series: any[] }>(`/dashboard/timeseries?${q.toString()}`);
   },
-  rulePerformance: (subId?: string) =>
-    call<{ rows: any[] }>(
-      `/dashboard/rule-performance${subId ? `?sub_account_id=${subId}` : ''}`
-    ),
+  rulePerformance: () =>
+    call<{ rows: any[] }>('/dashboard/rule-performance'),
 };

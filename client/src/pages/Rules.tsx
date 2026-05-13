@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -13,7 +13,6 @@ import { Plus, Trash2, Pencil } from 'lucide-react';
 
 interface Rule {
   id: string;
-  sub_account_id: string;
   name: string;
   inactivity_days: number;
   pipeline_stage_ids: string[] | null;
@@ -26,20 +25,16 @@ interface Rule {
 
 export default function Rules() {
   const [rules, setRules] = useState<Rule[]>([]);
-  const [subs, setSubs] = useState<any[]>([]);
   const [pipelines, setPipelines] = useState<any[]>([]);
   const [editing, setEditing] = useState<Partial<Rule> | null>(null);
 
   async function load() {
-    const [{ rules }, { sub_accounts }] = await Promise.all([api.listRules(), api.listSubAccounts()]);
+    const { rules } = await api.listRules();
     setRules(rules);
-    setSubs(sub_accounts);
-    if (sub_accounts[0]) {
-      try {
-        const r = await api.ghlPipelines(sub_accounts[0].id);
-        setPipelines(r.pipelines || []);
-      } catch { /* non-fatal — may not have GHL creds yet */ }
-    }
+    try {
+      const r = await api.ghlPipelines();
+      setPipelines(r.pipelines || []);
+    } catch { /* non-fatal — may not have Launchpad creds yet */ }
   }
 
   useEffect(() => {
@@ -56,14 +51,12 @@ export default function Rules() {
       include_tags: [],
       exclude_tags: [],
       activity_sources: [],
-      sub_account_id: subs[0]?.id,
     });
   }
 
   async function save() {
-    if (!editing || !editing.sub_account_id) return;
+    if (!editing) return;
     const payload: any = {
-      sub_account_id: editing.sub_account_id,
       name: editing.name,
       inactivity_days: Number(editing.inactivity_days),
       channel: editing.channel,
@@ -92,18 +85,10 @@ export default function Rules() {
           <h1 className="text-2xl font-semibold">Revive rules</h1>
           <p className="text-sm text-muted-foreground">Which dormant contacts should we surface?</p>
         </div>
-        <Button onClick={newRule} disabled={!subs.length}>
+        <Button onClick={newRule}>
           <Plus className="mr-2 h-4 w-4" /> New rule
         </Button>
       </div>
-
-      {!subs.length && (
-        <Card>
-          <CardContent className="pt-6 text-sm text-muted-foreground">
-            Add a sub-account on the Settings page before creating rules.
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <Table>
@@ -152,19 +137,6 @@ export default function Rules() {
               </SheetHeader>
 
               <div className="space-y-3">
-                <div>
-                  <Label>Sub-account</Label>
-                  <Select
-                    value={editing.sub_account_id || ''}
-                    onValueChange={(v) => setEditing({ ...editing, sub_account_id: v })}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Pick one" /></SelectTrigger>
-                    <SelectContent>
-                      {subs.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 <div>
                   <Label>Name</Label>
                   <Input value={editing.name || ''} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
@@ -270,7 +242,7 @@ export default function Rules() {
                 </div>
 
                 <div className="flex gap-2 pt-2">
-                  <Button onClick={save} disabled={!editing.name || !editing.sub_account_id}>Save</Button>
+                  <Button onClick={save} disabled={!editing.name}>Save</Button>
                   <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
                 </div>
               </div>

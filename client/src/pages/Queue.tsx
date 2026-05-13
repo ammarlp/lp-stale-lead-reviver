@@ -181,7 +181,6 @@ export default function Queue() {
     try {
       const rule = rules.find((r) => r.id === activeRuleId);
       const r: any = await api.runScan({
-        sub_account_id: rule?.sub_account_id,
         rule_id: activeRuleId,
       });
       const totals = r.results.reduce(
@@ -216,23 +215,13 @@ export default function Queue() {
       alert('Pick at least one contact.');
       return;
     }
-    // All targets must share the same sub-account so the workflow list matches.
-    const targetDrafts = drafts.filter((d) => targetIds.includes(d.id));
-    const subIds = new Set(targetDrafts.map((d) => d.sub_account_id));
-    if (subIds.size > 1) {
-      alert('Selected contacts span multiple sub-accounts. Push them in separate batches.');
-      return;
-    }
-    const subAccountId = targetDrafts[0]?.sub_account_id;
-    if (!subAccountId) return;
-
     setWfTargetIds(targetIds);
     setWfPushResult(null);
     setWfOpen(true);
     setWfLoading(true);
     setChosenWorkflow('');
     try {
-      const r = await api.ghlWorkflows(subAccountId);
+      const r = await api.ghlWorkflows();
       setWorkflows(r.workflows || []);
     } catch (err) {
       alert(`Failed to load workflows: ${(err as Error).message}`);

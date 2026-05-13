@@ -1,25 +1,16 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { listSubAccounts, upsertSubAccount, getSubAccount } from '../services/supabase';
+import {
+  getSubAccountByUser,
+  createSubAccountForUser,
+  updateSubAccountForUser,
+} from '../services/supabase';
 import { GhlClient } from '../services/ghl';
 import { draftMessage, hasAIKey } from '../services/ai';
 
 export const settingsRouter = Router();
 
-settingsRouter.get('/sub-accounts', async (_req, res) => {
-  try {
-    const subs = await listSubAccounts();
-    // redact the API key before returning
-    res.json({
-      sub_accounts: subs.map((s) => ({ ...s, ghl_api_key: s.ghl_api_key ? '***' + s.ghl_api_key.slice(-4) : '' })),
-    });
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
-  }
-});
-
 const subSchema = z.object({
-  id: z.string().uuid().optional(),
   name: z.string().min(1),
   ghl_location_id: z.string().min(1),
   ghl_api_key: z.string().min(1),
@@ -28,11 +19,42 @@ const subSchema = z.object({
   recovery_stage_id: z.string().nullable().optional(),
 });
 
+const subPatchSchema = subSchema.partial();
+
+function redactKey(key: string): string {
+  return key ? '***' + key.slice(-4) : '';
+}
+
+settingsRouter.get('/sub-account', async (req, res) => {
+  try {
+    const sub = await getSubAccountByUser(req.userId!);
+    if (!sub) return res.json({ sub_account: null });
+    res.json({ sub_account: { ...sub, ghl_api_key: redactKey(sub.ghl_api_key) } });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 settingsRouter.post('/sub-account', async (req, res) => {
   try {
     const body = subSchema.parse(req.body);
-    const sub = await upsertSubAccount(body);
-    res.json({ sub_account: { ...sub, ghl_api_key: '***' + sub.ghl_api_key.slice(-4) } });
+    const existing = await getSubAccountByUser(req.userId!);
+    const sub = existing
+      ? await updateSubAccountForUser(req.userId!, body)
+      : await createSubAccountForUser(req.userId!, body);
+    res.json({ sub_account: { ...sub, ghl_api_key: redactKey(sub.ghl_api_key) } });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+settingsRouter.patch('/sub-account', async (req, res) => {
+  try {
+    const body = subPatchSchema.parse(req.body);
+    const existing = await getSubAccountByUser(req.userId!);
+    if (!existing) return res.status(404).json({ error: 'not onboarded' });
+    const sub = await updateSubAccountForUser(req.userId!, body);
+    res.json({ sub_account: { ...sub, ghl_api_key: redactKey(sub.ghl_api_key) } });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }
@@ -63,10 +85,8 @@ settingsRouter.post('/ai-test', async (_req, res) => {
 });
 
 settingsRouter.get('/ghl/pipelines', async (req, res) => {
-  const subId = req.query.sub_account_id as string;
-  if (!subId) return res.status(400).json({ error: 'sub_account_id required' });
-  const sub = await getSubAccount(subId);
-  if (!sub) return res.status(404).json({ error: 'not found' });
+  const sub = await getSubAccountByUser(req.userId!);
+  if (!sub) return res.status(404).json({ error: 'not onboarded' });
   try {
     const ghl = new GhlClient(sub.ghl_api_key, sub.ghl_location_id);
     const pipelines = await ghl.listPipelines();
@@ -77,10 +97,8 @@ settingsRouter.get('/ghl/pipelines', async (req, res) => {
 });
 
 settingsRouter.get('/ghl/workflows', async (req, res) => {
-  const subId = req.query.sub_account_id as string;
-  if (!subId) return res.status(400).json({ error: 'sub_account_id required' });
-  const sub = await getSubAccount(subId);
-  if (!sub) return res.status(404).json({ error: 'not found' });
+  const sub = await getSubAccountByUser(req.userId!);
+  if (!sub) return res.status(404).json({ error: 'not onboarded' });
   try {
     const ghl = new GhlClient(sub.ghl_api_key, sub.ghl_location_id);
     const workflows = await ghl.listWorkflows();

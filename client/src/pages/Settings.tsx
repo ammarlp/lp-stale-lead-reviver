@@ -8,16 +8,18 @@ import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 
+const emptyForm = {
+  name: '',
+  ghl_location_id: '',
+  ghl_api_key: '',
+  brand_voice: '',
+  timezone: 'UTC',
+  recovery_stage_id: '',
+};
+
 export default function Settings() {
-  const [subs, setSubs] = useState<any[]>([]);
-  const [form, setForm] = useState<any>({
-    name: '',
-    ghl_location_id: '',
-    ghl_api_key: '',
-    brand_voice: '',
-    timezone: 'UTC',
-    recovery_stage_id: '',
-  });
+  const [sub, setSub] = useState<any | null>(null);
+  const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [aiStatus, setAiStatus] = useState<any>(null);
@@ -25,8 +27,18 @@ export default function Settings() {
   const [testResult, setTestResult] = useState<any>(null);
 
   async function load() {
-    const [{ sub_accounts }, ai] = await Promise.all([api.listSubAccounts(), api.aiStatus()]);
-    setSubs(sub_accounts);
+    const [{ sub_account }, ai] = await Promise.all([api.getSubAccount(), api.aiStatus()]);
+    setSub(sub_account);
+    if (sub_account) {
+      setForm({
+        name: sub_account.name || '',
+        ghl_location_id: sub_account.ghl_location_id || '',
+        ghl_api_key: '', // never round-trip the key — only set if user retypes it
+        brand_voice: sub_account.brand_voice || '',
+        timezone: sub_account.timezone || 'UTC',
+        recovery_stage_id: sub_account.recovery_stage_id || '',
+      });
+    }
     setAiStatus(ai);
   }
 
@@ -38,16 +50,16 @@ export default function Settings() {
     setSaving(true);
     setSavedMsg(null);
     try {
-      await api.saveSubAccount(form);
+      // If editing and they didn't retype the API key, use the existing one server-side.
+      // Since we never expose the key client-side, the user MUST retype to change/save it
+      // on a fresh onboarding. For edits we leave the key field optional.
+      const payload: any = { ...form, brand_voice: form.brand_voice || null, recovery_stage_id: form.recovery_stage_id || null };
+      if (!form.ghl_api_key) {
+        if (sub) delete payload.ghl_api_key; // keep the existing key
+      }
+      await api.saveSubAccount(payload);
       setSavedMsg('Saved.');
-      setForm({
-        name: '',
-        ghl_location_id: '',
-        ghl_api_key: '',
-        brand_voice: '',
-        timezone: 'UTC',
-        recovery_stage_id: '',
-      });
+      setForm({ ...form, ghl_api_key: '' });
       await load();
     } catch (err) {
       setSavedMsg(`Error: ${(err as Error).message}`);
@@ -116,8 +128,15 @@ export default function Settings() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Add / update sub-account</CardTitle>
-          <CardDescription>Launchpad Location ID + API key. Keys are encrypted at rest.</CardDescription>
+          <CardTitle>Sub-account</CardTitle>
+          <CardDescription>
+            Launchpad Location ID + API key. Keys are encrypted at rest.
+            {sub && (
+              <span className="ml-1 text-xs">
+                Current key: <code>{sub.ghl_api_key}</code> — leave the field blank to keep it.
+              </span>
+            )}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-3 md:grid-cols-2">
@@ -134,7 +153,7 @@ export default function Settings() {
               <Input value={form.ghl_location_id} onChange={(e) => setForm({ ...form, ghl_location_id: e.target.value })} />
             </div>
             <div>
-              <Label>Launchpad API key</Label>
+              <Label>Launchpad API key {sub && <span className="text-xs text-muted-foreground">(leave blank to keep current)</span>}</Label>
               <Input
                 type="password"
                 value={form.ghl_api_key}
@@ -159,29 +178,13 @@ export default function Settings() {
             </div>
           </div>
           <div className="flex items-center gap-2 pt-1">
-            <Button onClick={saveSub} disabled={saving || !form.name || !form.ghl_location_id || !form.ghl_api_key}>
+            <Button
+              onClick={saveSub}
+              disabled={saving || !form.name || !form.ghl_location_id || (!sub && !form.ghl_api_key)}
+            >
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Save
             </Button>
             {savedMsg && <span className="text-xs text-muted-foreground">{savedMsg}</span>}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Connected sub-accounts</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {subs.length === 0 && <div className="text-sm text-muted-foreground">None connected yet.</div>}
-          <div className="space-y-2">
-            {subs.map((s) => (
-              <div key={s.id} className="rounded-md border p-3 text-sm">
-                <div className="font-medium">{s.name}</div>
-                <div className="text-xs text-muted-foreground">
-                  Location: {s.ghl_location_id} · Timezone: {s.timezone} · Key: {s.ghl_api_key}
-                </div>
-              </div>
-            ))}
           </div>
         </CardContent>
       </Card>

@@ -5,6 +5,7 @@ create extension if not exists "pgcrypto";
 
 create table if not exists sub_accounts (
   id uuid primary key default gen_random_uuid(),
+  user_id uuid unique not null references auth.users(id) on delete cascade,
   ghl_location_id text unique not null,
   ghl_api_key text not null,           -- AES-256 encrypted (iv:ciphertext:tag hex)
   name text not null,
@@ -13,6 +14,7 @@ create table if not exists sub_accounts (
   recovery_stage_id text,               -- optional: where to move positive replies
   created_at timestamptz default now()
 );
+create index if not exists sub_accounts_user_id_idx on sub_accounts (user_id);
 
 create table if not exists revive_rules (
   id uuid primary key default gen_random_uuid(),

@@ -3,23 +3,22 @@ import { sb } from '../services/supabase';
 
 export const dashboardRouter = Router();
 
-function applyFilters(q: any, subId?: string, ruleId?: string) {
-  if (subId) q = q.eq('sub_account_id', subId);
-  if (ruleId) q = q.eq('rule_id', ruleId);
-  return q;
-}
-
 dashboardRouter.get('/kpis', async (req, res) => {
-  const subId = req.query.sub_account_id as string | undefined;
   const ruleId = req.query.rule_id as string | undefined;
 
-  const head = () => applyFilters(sb().from('drafts').select('*', { count: 'exact', head: true }), subId, ruleId);
+  const head = () => {
+    let q = sb()
+      .from('drafts')
+      .select('*', { count: 'exact', head: true })
+      .eq('sub_account_id', req.subAccountId!);
+    if (ruleId) q = q.eq('rule_id', ruleId);
+    return q;
+  };
 
   const now = Date.now();
   const d7 = new Date(now - 7 * 86_400_000).toISOString();
   const d30 = new Date(now - 30 * 86_400_000).toISOString();
 
-  // sent_at-anchored for sent/replied/positive so numerators and denominators share a window.
   const [s7, s30, pending, sent, replied, positive] = await Promise.all([
     head().gte('created_at', d7),
     head().gte('created_at', d30),
@@ -46,16 +45,16 @@ dashboardRouter.get('/kpis', async (req, res) => {
 });
 
 dashboardRouter.get('/timeseries', async (req, res) => {
-  const subId = req.query.sub_account_id as string | undefined;
   const ruleId = req.query.rule_id as string | undefined;
   const days = Math.min(parseInt((req.query.days as string) || '90'), 365);
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
 
-  let draftsQ = applyFilters(
-    sb().from('drafts').select('created_at,sent_at,status,reply_sentiment'),
-    subId,
-    ruleId
-  ).gte('created_at', since);
+  let draftsQ = sb()
+    .from('drafts')
+    .select('created_at,sent_at,status,reply_sentiment')
+    .eq('sub_account_id', req.subAccountId!)
+    .gte('created_at', since);
+  if (ruleId) draftsQ = draftsQ.eq('rule_id', ruleId);
   const { data: drafts, error } = await draftsQ;
   if (error) return res.status(500).json({ error: error.message });
 
@@ -66,7 +65,6 @@ dashboardRouter.get('/timeseries', async (req, res) => {
     buckets.set(d, { date: d, sends: 0, replies: 0, positive: 0 });
   }
   for (const d of drafts || []) {
-    // Bucket by sent_at so sends/replies/positive all line up on the day the message went out.
     if (!d.sent_at) continue;
     const k = key(d.sent_at);
     const b = buckets.get(k);
@@ -79,16 +77,16 @@ dashboardRouter.get('/timeseries', async (req, res) => {
 });
 
 dashboardRouter.get('/rule-performance', async (req, res) => {
-  const subId = req.query.sub_account_id as string | undefined;
-
-  let rulesQ = sb().from('revive_rules').select('id,name');
-  if (subId) rulesQ = rulesQ.eq('sub_account_id', subId);
-  const { data: rules, error: rErr } = await rulesQ;
+  const { data: rules, error: rErr } = await sb()
+    .from('revive_rules')
+    .select('id,name')
+    .eq('sub_account_id', req.subAccountId!);
   if (rErr) return res.status(500).json({ error: rErr.message });
 
-  let draftsQ = sb().from('drafts').select('rule_id,status,reply_sentiment,sent_at');
-  if (subId) draftsQ = draftsQ.eq('sub_account_id', subId);
-  const { data: drafts, error: dErr } = await draftsQ;
+  const { data: drafts, error: dErr } = await sb()
+    .from('drafts')
+    .select('rule_id,status,reply_sentiment,sent_at')
+    .eq('sub_account_id', req.subAccountId!);
   if (dErr) return res.status(500).json({ error: dErr.message });
 
   const byRule = new Map<string, { sent: number; replied: number; positive: number }>();

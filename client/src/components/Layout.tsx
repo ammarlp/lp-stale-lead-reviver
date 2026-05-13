@@ -1,6 +1,8 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, ListChecks, Settings as SettingsIcon, Zap } from 'lucide-react';
+import { useAuth } from '@/lib/auth';
+import { Button } from '@/components/ui/button';
+import { LayoutDashboard, ListChecks, LogOut, Settings as SettingsIcon, Zap } from 'lucide-react';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -10,9 +12,17 @@ const navItems = [
 ];
 
 export function Layout() {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  async function handleLogout() {
+    await signOut();
+    navigate('/login', { replace: true });
+  }
+
   return (
     <div className="flex min-h-screen">
-      <aside className="w-64 border-r bg-muted/30 p-4">
+      <aside className="flex w-64 flex-col border-r bg-muted/30 p-4">
         <div className="mb-6">
           <div className="text-xl font-extrabold leading-tight text-primary">Launchpad Innovations</div>
           <div className="text-xs font-medium text-muted-foreground">Stale Lead Reviver</div>
@@ -35,8 +45,19 @@ export function Layout() {
             </NavLink>
           ))}
         </nav>
+        <div className="mt-auto space-y-2 pt-4">
+          {user?.email && (
+            <div className="truncate px-3 text-xs text-muted-foreground" title={user.email}>
+              {user.email}
+            </div>
+          )}
+          <Button variant="ghost" size="sm" className="w-full justify-start" onClick={handleLogout}>
+            <LogOut className="mr-2 h-4 w-4" />
+            Sign out
+          </Button>
+        </div>
       </aside>
-      <main className="flex-1 p-6 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto p-6">
         <Outlet />
       </main>
     </div>
