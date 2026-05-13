@@ -13,30 +13,35 @@ import { dashboardRouter } from './routes/dashboard';
 import { runScan } from './cron/scan';
 import { hasAIKey } from './services/ai';
 
+const BASE_PATH = '/lead-reviver';
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
-app.get('/api/health', (_req, res) => {
+app.get(`${BASE_PATH}/api/health`, (_req, res) => {
   res.json({ ok: true, ai: hasAIKey() ? 'connected' : 'template-fallback', ts: Date.now() });
 });
 
-app.use('/api/drafts', draftsRouter);
-app.use('/api/rules', rulesRouter);
-app.use('/api/settings', settingsRouter);
-app.use('/api/webhook', webhooksRouter);
-app.use('/api/cron', cronRouter);
-app.use('/api/dashboard', dashboardRouter);
+app.use(`${BASE_PATH}/api/drafts`, draftsRouter);
+app.use(`${BASE_PATH}/api/rules`, rulesRouter);
+app.use(`${BASE_PATH}/api/settings`, settingsRouter);
+app.use(`${BASE_PATH}/api/webhook`, webhooksRouter);
+app.use(`${BASE_PATH}/api/cron`, cronRouter);
+app.use(`${BASE_PATH}/api/dashboard`, dashboardRouter);
 
 // Resolves to <repo>/client/dist whether running from src (tsx) or dist (node).
 const clientDist = path.resolve(__dirname, '..', '..', 'client', 'dist');
 if (fs.existsSync(clientDist)) {
-  app.use(express.static(clientDist));
+  app.use(BASE_PATH, express.static(clientDist));
   app.use((req, res, next) => {
-    if (req.method !== 'GET' || req.path.startsWith('/api')) return next();
+    if (req.method !== 'GET') return next();
+    if (!req.path.startsWith(BASE_PATH)) return next();
+    if (req.path.startsWith(`${BASE_PATH}/api`)) return next();
     res.sendFile(path.join(clientDist, 'index.html'));
   });
-  console.log(`[server] serving client from ${clientDist}`);
+  app.get('/', (_req, res) => res.redirect(BASE_PATH));
+  console.log(`[server] serving client from ${clientDist} at ${BASE_PATH}`);
 } else {
   console.warn(`[server] client build not found at ${clientDist} — API-only mode`);
 }

@@ -10,7 +10,7 @@ import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename="/lead-reviver">
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
