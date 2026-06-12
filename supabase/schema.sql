@@ -44,6 +44,9 @@ create table if not exists drafts (
   status text check (status in ('pending','approved','edited','rejected','sent','replied')) default 'pending',
   approved_by uuid,
   sent_at timestamptz,
+  reply_text text,
+  reply_received_at timestamptz,
+  reply_checked_at timestamptz,
   reply_sentiment text,
   created_at timestamptz default now()
 );
@@ -59,6 +62,7 @@ create table if not exists revive_events (
 create index if not exists drafts_sub_status_idx on drafts (sub_account_id, status);
 create index if not exists drafts_contact_idx on drafts (ghl_contact_id);
 create index if not exists drafts_created_idx on drafts (created_at);
+create index if not exists drafts_reply_check_idx on drafts (sub_account_id, sent_at) where status = 'sent';
 create index if not exists events_draft_idx on revive_events (draft_id);
 
 -- RLS: service key bypasses RLS, so we enable it for safety but the server uses service role.

@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { cn, relativeTime } from '@/lib/utils';
 import { api } from '@/lib/api';
-import { Check, Loader2, RefreshCw, Send, X, Sparkles, FileText, PlayCircle, Workflow } from 'lucide-react';
+import { Check, Loader2, RefreshCw, Send, X, Sparkles, FileText, PlayCircle, Workflow, MessageCircle } from 'lucide-react';
 
 const ALL = '__all__';
 
@@ -38,6 +38,8 @@ export default function Queue() {
 
   // Channel filter (kept from before)
   const [channelFilter, setChannelFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('pending');
+  const [checkingReplies, setCheckingReplies] = useState(false);
 
   // Scan confirm
   const [scanOpen, setScanOpen] = useState(false);
@@ -55,7 +57,7 @@ export default function Queue() {
   async function load() {
     setLoading(true);
     const [{ drafts }, { rules }] = await Promise.all([
-      api.listDrafts({ status: 'pending' }),
+      api.listDrafts({ status: statusFilter }),
       api.listRules(),
     ]);
     setDrafts(drafts);
@@ -65,7 +67,24 @@ export default function Queue() {
 
   useEffect(() => {
     load().catch(console.error);
-  }, []);
+  }, [statusFilter]);
+
+  async function checkRepliesNow() {
+    setCheckingReplies(true);
+    try {
+      const res = await api.checkReplies();
+      const totals = res.results.reduce(
+        (acc, r) => ({ checked: acc.checked + r.checked, replied: acc.replied + r.replied }),
+        { checked: 0, replied: 0 }
+      );
+      alert(`Checked ${totals.checked} sent draft${totals.checked === 1 ? '' : 's'}. Found ${totals.replied} new repl${totals.replied === 1 ? 'y' : 'ies'}.`);
+      await load();
+    } catch (err) {
+      alert(`Failed: ${(err as Error).message}`);
+    } finally {
+      setCheckingReplies(false);
+    }
+  }
 
   // Keep ?rule= in sync so deep links work and refresh preserves the tab.
   useEffect(() => {
@@ -268,13 +287,17 @@ export default function Queue() {
         <div>
           <h1 className="text-2xl font-semibold">Approval queue</h1>
           <p className="text-sm text-muted-foreground">
-            {activeRule ? `Queue: ${activeRule.name}` : 'All rules'} · {filtered.length} pending
+            {activeRule ? `Queue: ${activeRule.name}` : 'All rules'} · {filtered.length} {statusFilter === 'all' ? 'drafts' : statusFilter}
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={load} disabled={loading}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
             Refresh
+          </Button>
+          <Button variant="outline" onClick={checkRepliesNow} disabled={checkingReplies}>
+            {checkingReplies ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageCircle className="mr-2 h-4 w-4" />}
+            Check for replies
           </Button>
           <Button onClick={openScanDialog} disabled={scanning || activeRuleId === ALL}>
             <PlayCircle className="mr-2 h-4 w-4" />
@@ -322,6 +345,19 @@ export default function Queue() {
       <Card>
         <CardContent className="flex flex-wrap gap-3 pt-6">
           <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Status</span>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="sent">Sent</SelectItem>
+                <SelectItem value="replied">Replied</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="all">All</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">Channel</span>
             <Select value={channelFilter} onValueChange={setChannelFilter}>
               <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
@@ -366,6 +402,7 @@ export default function Queue() {
               <TableHead>Stage</TableHead>
               <TableHead>Source</TableHead>
               <TableHead>Channel</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead>Origin</TableHead>
               <TableHead>Last activity</TableHead>
               <TableHead>Preview</TableHead>
@@ -375,8 +412,9 @@ export default function Queue() {
           <TableBody>
             {!loading && filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground">
-                  No pending drafts in this queue. Click "Scan into this queue" to populate.
+                <TableCell colSpan={10} className="text-center text-muted-foreground">
+                  No {statusFilter === 'all' ? '' : statusFilter} drafts in this queue.
+                  {statusFilter === 'pending' && ' Click "Scan into this queue" to populate.'}
                 </TableCell>
               </TableRow>
             )}
@@ -399,6 +437,7 @@ export default function Queue() {
                   <TableCell>
                     <Badge variant="outline">{d.channel.toUpperCase()}</Badge>
                   </TableCell>
+                  <TableCell><StatusCell draft={d} /></TableCell>
                   <TableCell>
                     {d.draft_source === 'ai' ? (
                       <Badge variant="success"><Sparkles className="mr-1 h-3 w-3" />AI</Badge>
@@ -452,6 +491,36 @@ export default function Queue() {
                 <div className="text-xs font-medium text-muted-foreground mb-1">History summary</div>
                 <div className="rounded-md border bg-muted/40 p-3 text-sm">{selected.context_summary}</div>
               </div>
+
+              {selected.status === 'replied' && selected.reply_text && (
+                <div>
+                  <div className="mb-1 flex items-center gap-2">
+                    <div className="text-xs font-medium text-muted-foreground">Reply received</div>
+                    {selected.reply_sentiment && (
+                      <Badge
+                        variant={
+                          selected.reply_sentiment === 'positive'
+                            ? 'success'
+                            : selected.reply_sentiment === 'negative' || selected.reply_sentiment === 'unsubscribe'
+                            ? 'destructive'
+                            : 'secondary'
+                        }
+                        className="text-[10px]"
+                      >
+                        {selected.reply_sentiment}
+                      </Badge>
+                    )}
+                    {selected.reply_received_at && (
+                      <span className="text-[10px] text-muted-foreground">
+                        {relativeTime(Date.parse(selected.reply_received_at))}
+                      </span>
+                    )}
+                  </div>
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 whitespace-pre-wrap">
+                    {selected.reply_text}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -602,6 +671,29 @@ function RuleTab({
       </span>
     </button>
   );
+}
+
+function StatusCell({ draft }: { draft: any }) {
+  if (draft.status === 'replied') {
+    const sentiment = draft.reply_sentiment as string | null;
+    const variant = sentiment === 'positive' ? 'success' : sentiment === 'negative' || sentiment === 'unsubscribe' ? 'destructive' : 'secondary';
+    return (
+      <div className="flex flex-col gap-0.5">
+        <Badge variant="success">
+          <MessageCircle className="mr-1 h-3 w-3" />Replied
+        </Badge>
+        {sentiment && (
+          <Badge variant={variant as any} className="w-fit text-[10px]">
+            {sentiment}
+          </Badge>
+        )}
+      </div>
+    );
+  }
+  if (draft.status === 'sent') return <Badge variant="secondary">Sent</Badge>;
+  if (draft.status === 'rejected') return <Badge variant="outline">Rejected</Badge>;
+  if (draft.status === 'edited') return <Badge variant="outline">Edited</Badge>;
+  return <Badge variant="outline">Pending</Badge>;
 }
 
 function ContactPanel({ snapshot }: { snapshot: any }) {

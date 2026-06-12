@@ -81,6 +81,11 @@ export const api = {
   // cron
   runScan: (body?: { rule_id?: string }) =>
     call('/cron/scan', { method: 'POST', body: JSON.stringify(body || {}) }),
+  checkReplies: () =>
+    call<{ ok: boolean; results: Array<{ subAccountId: string; checked: number; replied: number; errors: string[] }> }>(
+      '/cron/check-replies',
+      { method: 'POST' }
+    ),
 
   // dashboard
   kpis: (ruleId?: string) => {

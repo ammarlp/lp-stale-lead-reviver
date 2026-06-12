@@ -80,6 +80,10 @@ export class GhlClient {
     });
   }
 
+  async listConversationMessages(conversationId: string, limit = 20) {
+    return this.call<any>('GET', `/conversations/${conversationId}/messages`, undefined, { limit });
+  }
+
   async sendMessage(body: {
     type: 'SMS' | 'Email';
     contactId: string;

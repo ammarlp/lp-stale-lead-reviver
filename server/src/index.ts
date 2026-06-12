@@ -12,6 +12,7 @@ import { webhooksRouter } from './routes/webhooks';
 import { cronRouter } from './routes/cron';
 import { dashboardRouter } from './routes/dashboard';
 import { runScan } from './cron/scan';
+import { runReplyCheck } from './cron/reply-check';
 import { hasAIKey } from './services/ai';
 import { requireAuth, attachSubAccount, requireSubAccount } from './middleware/auth';
 import { createSubAccountForUser, getSubAccountByUser } from './services/supabase';
@@ -100,4 +101,25 @@ if (cron.validate(schedule)) {
   console.log(`[cron] scheduled: ${schedule}`);
 } else {
   console.warn(`[cron] invalid CRON_SCHEDULE: ${schedule}`);
+}
+
+const replySchedule = process.env.REPLY_CHECK_SCHEDULE || '*/30 * * * *';
+if (cron.validate(replySchedule)) {
+  cron.schedule(replySchedule, async () => {
+    try {
+      const results = await runReplyCheck();
+      const totals = results.reduce(
+        (acc, r) => ({ checked: acc.checked + r.checked, replied: acc.replied + r.replied }),
+        { checked: 0, replied: 0 }
+      );
+      if (totals.checked > 0) {
+        console.log(`[cron] reply-check: ${totals.checked} checked, ${totals.replied} new replies`);
+      }
+    } catch (err) {
+      console.error('[cron] reply-check failed:', err);
+    }
+  });
+  console.log(`[cron] reply-check scheduled: ${replySchedule}`);
+} else {
+  console.warn(`[cron] invalid REPLY_CHECK_SCHEDULE: ${replySchedule}`);
 }
