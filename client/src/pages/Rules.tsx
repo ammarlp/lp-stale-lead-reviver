@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,6 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
+import { MultiSelect, MultiSelectOption } from '@/components/ui/multi-select';
+import { ChipInput } from '@/components/ui/chip-input';
 import { api } from '@/lib/api';
 import { Plus, Trash2, Pencil } from 'lucide-react';
 
@@ -40,6 +42,18 @@ export default function Rules() {
   useEffect(() => {
     load().catch(console.error);
   }, []);
+
+  const stageOptions = useMemo<MultiSelectOption[]>(
+    () =>
+      pipelines.flatMap((p: any) =>
+        (p.stages || []).map((s: any) => ({
+          value: s.id,
+          label: s.name,
+          group: p.name,
+        }))
+      ),
+    [pipelines]
+  );
 
   function newRule() {
     setEditing({
@@ -167,69 +181,46 @@ export default function Rules() {
                 </div>
 
                 <div>
-                  <Label>Pipeline stages (comma-separated IDs, blank = all)</Label>
-                  <Input
-                    value={(editing.pipeline_stage_ids || []).join(',')}
-                    onChange={(e) =>
-                      setEditing({
-                        ...editing,
-                        pipeline_stage_ids: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
-                      })
-                    }
-                  />
-                  {pipelines.length > 0 && (
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      Known stages:{' '}
-                      {pipelines
-                        .flatMap((p: any) =>
-                          (p.stages || []).map((s: any) => `${p.name} / ${s.name} = ${s.id}`)
-                        )
-                        .slice(0, 6)
-                        .join(' · ')}
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <Label>Include tags (comma-separated)</Label>
-                  <Input
-                    value={(editing.include_tags || []).join(',')}
-                    onChange={(e) =>
-                      setEditing({
-                        ...editing,
-                        include_tags: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
-                      })
-                    }
-                  />
-                </div>
-
-                <div>
-                  <Label>Exclude tags (comma-separated)</Label>
-                  <Input
-                    value={(editing.exclude_tags || []).join(',')}
-                    onChange={(e) =>
-                      setEditing({
-                        ...editing,
-                        exclude_tags: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
-                      })
-                    }
-                  />
-                </div>
-
-                <div>
-                  <Label>Activity sources (comma-separated, partial match)</Label>
-                  <Input
-                    placeholder="e.g. CRM UI, LinkedIn, Form, Webinar"
-                    value={(editing.activity_sources || []).join(',')}
-                    onChange={(e) =>
-                      setEditing({
-                        ...editing,
-                        activity_sources: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
-                      })
-                    }
+                  <Label>Pipeline stages</Label>
+                  <MultiSelect
+                    options={stageOptions}
+                    value={editing.pipeline_stage_ids || []}
+                    onChange={(next) => setEditing({ ...editing, pipeline_stage_ids: next })}
+                    placeholder="All stages"
+                    emptyText="No Launchpad pipelines loaded — check Settings."
                   />
                   <div className="mt-1 text-xs text-muted-foreground">
-                    Filters by contact's <code>source</code> + first/last attribution source. Case-insensitive substring match. Blank = no filter.
+                    Leave empty to include all stages.
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Include tags</Label>
+                  <ChipInput
+                    value={editing.include_tags || []}
+                    onChange={(next) => setEditing({ ...editing, include_tags: next })}
+                    placeholder="Type a tag and press Enter…"
+                  />
+                </div>
+
+                <div>
+                  <Label>Exclude tags</Label>
+                  <ChipInput
+                    value={editing.exclude_tags || []}
+                    onChange={(next) => setEditing({ ...editing, exclude_tags: next })}
+                    placeholder="Type a tag and press Enter…"
+                  />
+                </div>
+
+                <div>
+                  <Label>Activity sources</Label>
+                  <ChipInput
+                    value={editing.activity_sources || []}
+                    onChange={(next) => setEditing({ ...editing, activity_sources: next })}
+                    placeholder="e.g. CRM UI, LinkedIn, Form…"
+                  />
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Matches the contact's <code>source</code> + first/last attribution source. Case-insensitive substring match. Empty = no filter.
                   </div>
                 </div>
 
